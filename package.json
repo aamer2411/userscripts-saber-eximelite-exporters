@@ -1,0 +1,12 @@
+{
+  "name": "userscripts-saber-eximelite-exporters",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Tampermonkey userscripts that export SABER conformity certificates and EximElite EDA-EX trade data to Excel.",
+  "author": "Mohammed Aamer",
+  "license": "MIT",
+  "scripts": {
+    "build": "node tools/build-combined.js",
+    "check": "node --check scripts/eximelite-exporter.user.js && node --check scripts/saber-coc-detail-exporter.user.js && node --check scripts/eximelite-saber-combined.user.js"
+  }
+}
