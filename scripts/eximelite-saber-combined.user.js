@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         EximElite + SABER Combined Exporter
 // @namespace    eximelite-exporter
-// @version      1.0
+// @version      1.1
 // @description  One script, two tools by site: EximElite EDA-EX bulk exporter on powerbi/eximelite, and the SABER Conformity Certificates detail exporter on saber.sa.
 // @author       Mohammed Aamer
 // @license      MIT
@@ -1531,7 +1531,7 @@
                     seen.add(no);
                     newOnPage++;
                     const view = tr.querySelector('a[href*="ViewHRCoC"]');
-                    const review = tr.querySelector('a.downloadCertificate, a[href*="/ContactOfficer/Reviews"]');
+                    const review = tr.querySelector('a[href*="Reviews"]');
                     rows.push({
                         certNo: no,
                         detailUrl: view ? view.href : null,

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SABER Conformity Certificates Detail Exporter
 // @namespace    saber-exporter
-// @version      0.4
+// @version      0.5
 // @description  Export every Conformity Certificate with its full detail-page fields (Certification Body + 14 fields) to Excel. Unlocks locked certificates first via the review page's Skip (default) or a 5-star Send Review.
 // @author       Mohammed Aamer
 // @license      MIT
@@ -110,7 +110,7 @@
                 seen.add(no);
                 newOnPage++;
                 const view = tr.querySelector('a[href*="ViewHRCoC"]');
-                const review = tr.querySelector('a.downloadCertificate, a[href*="/ContactOfficer/Reviews"]');
+                const review = tr.querySelector('a[href*="Reviews"]');
                 rows.push({
                     certNo: no,
                     detailUrl: view ? view.href : null,
