@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         EximElite + SABER Combined Exporter
 // @namespace    eximelite-exporter
-// @version      1.5
+// @version      1.6
 // @description  One script, two tools by site: EximElite EDA-EX bulk exporter on powerbi/eximelite, and the SABER Conformity Certificates detail exporter on saber.sa.
 // @author       Mohammed Aamer
 // @license      MIT
@@ -1619,9 +1619,11 @@
     
         // "We ( ....OFFICE NAME.... ) office number ..." -> OFFICE NAME (dots are padding).
         // Ends at ") office", so a name with its own brackets ("TUV Austria (SHANGHAI) Co.")
-        // is kept whole; falls back to the first ")" if that wording is missing.
+        // is kept whole; falls back to the first ")" if that wording is missing. Certificates
+        // SASO issues itself (e.g. IECEE) say "We, the Saudi Standards, ... Organization, certify".
         function certificationBody(text) {
-            const m = text.match(/We\s*\(([\s\S]*?)\)\s*office/i) || text.match(/We\s*\(([\s\S]*?)\)/);
+            const m = text.match(/We\s*\(([\s\S]*?)\)\s*office/i) || text.match(/We\s*\(([\s\S]*?)\)/)
+                || text.match(/We,\s*the\s+([\s\S]*?),\s*certify/i);
             if (!m) return '';
             return m[1].replace(/^[\s.]+|[\s.]+$/g, '').replace(/\s+/g, ' ').trim();
         }
@@ -1658,10 +1660,10 @@
     
         // ---------- certificate PDFs ----------
         // Download-only certificates have no detail page, only a PDF in SABER's own template:
-        // on page 1 each label is 8pt text and its value 10pt text to its right on the same
-        // row. pdf.worker is @required too, so pdf.js runs in-page without loading a worker.
+        // on page 1 each label is 7.5-8pt text and its value 9.8-10pt text to its right on the
+        // same row. pdf.worker is @required too, so pdf.js runs in-page without loading a worker.
     
-        const isValue = it => it.h >= 9.5;
+        const isValue = it => it.h >= 9;
     
         // Page 1's text pieces with their position (presentation-form Arabic normalised).
         async function pdfItems(buf) {
@@ -1683,9 +1685,10 @@
                 .sort((a, b) => b.y - a.y || a.x - b.x).map(it => it.s).join(' ');
         }
     
-        // The "We (... NAME ...) Office Number" line, pieces put back in left-to-right order.
+        // The "We (... NAME ...) Office Number" (or "We, the NAME, certify") line, pieces put
+        // back in left-to-right order.
         function pdfCertBody(items) {
-            const we = items.find(it => it.s === 'We');
+            const we = items.find(it => /^We\b/.test(it.s));
             if (!we) return '';
             return certificationBody(items.filter(it => Math.abs(it.y - we.y) <= 2)
                 .sort((a, b) => a.x - b.x).map(it => it.s).join(' '));
