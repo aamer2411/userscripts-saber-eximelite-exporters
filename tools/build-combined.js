@@ -27,7 +27,7 @@ const RAW = 'https://raw.githubusercontent.com/aamer2411/userscripts-saber-exime
 const header = `// ==UserScript==
 // @name         EximElite + SABER Combined Exporter
 // @namespace    eximelite-exporter
-// @version      1.3
+// @version      1.4
 // @description  One script, two tools by site: EximElite EDA-EX bulk exporter on powerbi/eximelite, and the SABER Conformity Certificates detail exporter on saber.sa.
 // @author       Mohammed Aamer
 // @license      MIT
@@ -41,6 +41,8 @@ const header = `// ==UserScript==
 // @match        https://saber.sa/contactofficer/*
 // @require      https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js
 // @require      https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js
+// @require      https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js
+// @require      https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js
 // @grant        none
 // @run-at       document-start
 // ==/UserScript==
@@ -52,7 +54,7 @@ const header = `// ==UserScript==
 //   * saber.sa           -> runSaber()  (Conformity Certificates detail exporter)
 //   * powerbi / eximelite -> runExim()  (EDA-EX bulk exporter, runs in both frames)
 // Each tool is the original script wrapped verbatim in its own function, so nothing is
-// shared except the two @require libraries (identical versions in both originals). Edit
+// shared except the @require libraries (xlsx/jszip in both; pdf.js used by SABER only). Edit
 // a tool by editing its original file and re-running the build.
 //
 `;

@@ -25,11 +25,12 @@ Pick **one** of the options below. The combined script contains both tools, so d
 
 ### SABER Conformity Certificates Exporter
 
-- **Every certificate, full detail:** pages the whole Conformity Certificates list, opens each certificate's detail page and exports 15 fields per certificate, including Certification Body, Certificate Number, Issue and Expire Date, Product, Trade Mark, Model, HS Code, Technical Regulation and Manufacturer.
+- **Every certificate, full detail:** pages the whole Conformity Certificates list, opens each certificate's detail page and exports 16 fields per certificate, including Certification Body, Certificate Number, Issue and Expire Date, Certificate Status, Product, Trade Mark, Model, HS Code, Technical Regulation and Manufacturer.
+- **Download-only certificates too:** some certificates have no detail page, only a PDF download. The script fetches each PDF and reads its fields in the browser. Download-only certificates that aren't a certificate PDF (e.g. IECEE) are exported with the list's number, dates, product, model and status.
 - **Handles locked certificates:** SABER hides a certificate's detail page until its review form is dealt with. The script presses the review page's **Skip** for you (default), the same action a person does by hand. An optional mode submits a 5-star review instead.
 - **Clean workbook:** one sheet, a `Sl No` column, rows sorted by Expire Date (soonest first), formatted as an Excel table.
 - **Safe by design:** everything is a read except the review skip. No other action link (Cancel, Delete and so on) is ever touched. If the session expires, the run stops and asks you to log in again.
-- **Gentle on a slow site:** detail pages are fetched 3 at a time.
+- **Gentle on a slow site:** detail pages and PDFs are fetched 3 at a time.
 
 Output file: `SABER_Conformity_Certificates_YYYYMMDD.xlsx`
 
@@ -69,7 +70,7 @@ Tampermonkey checks this repository for updates automatically.
 2. Open the right page:
    - **SABER:** any page under Contact Officer (the script reads the Conformity Certificates list itself).
    - **EximElite:** the EDA-EX report. Set the slicers (year, month, HS code, country) to the data you want.
-3. Click the round green download button in the top-right corner.
+3. Click the round green download button in the top-right corner (hovering it shows what it does).
 4. Watch progress in the status pill next to it. The `.xlsx` lands in your Downloads folder.
 
 ---
@@ -81,8 +82,8 @@ Settings are constants near the top of each script (Tampermonkey dashboard, then
 | Script | Constant | Default | Purpose |
 |---|---|---|---|
 | SABER | `UNLOCK_MODE` | `'skip'` | `'skip'` presses Skip on locked reviews; `'submit5'` sends a 5-star review |
-| SABER | `DETAIL_CONCURRENCY` | `3` | Detail pages fetched in parallel (keep low, the site is slow) |
-| SABER | `COLUMNS` | 15 fields | Exported fields, order and headers |
+| SABER | `DETAIL_CONCURRENCY` | `3` | Detail pages and PDFs fetched in parallel (keep low, the site is slow) |
+| SABER | `COLUMNS` | 16 fields | Exported fields, order and headers |
 | EximElite | `COLUMNS` | 13 fields | Columns on the Shipments and KPI sheets |
 | EximElite | `RAW_EXTRA_COLUMNS` | 18 fields | Extra columns on the Raw Data sheet only |
 | EximElite | `PAGE_ROWS` | `30000` | Rows requested per query page |
@@ -93,7 +94,7 @@ Editing a script in Tampermonkey stops automatic updates for it. To keep your ch
 
 ## How It Works
 
-**SABER.** The portal is a server-rendered ASP.NET MVC site with no API and no export button. The list shows 7 certificates per page and ignores page-size parameters. The script fetches the list pages with your session cookie, unlocks locked certificates by re-submitting the review page's own form (including its anti-forgery token) to the Skip action, re-reads the list to get every detail link, then parses each detail page into a row.
+**SABER.** The portal is a server-rendered ASP.NET MVC site with no API and no export button. The list shows 7 certificates per page and ignores page-size parameters. The script fetches the list pages with your session cookie, unlocks locked certificates by re-submitting the review page's own form (including its anti-forgery token) to the Skip action, re-reads the list to get every detail link, then parses each detail page into a row. Certificate status comes from the list. For download-only certificates it fetches the certificate PDF and reads it with pdf.js: each value is picked by its position next to its label on page 1.
 
 **EximElite.** The page embeds a publish-to-web Power BI report. The script hooks the report's own `querydata` request to capture its key and filters, then replays it with every detail column selected. It pages through the result, decodes Power BI's compressed response format, and writes the workbook with SheetJS. Table styling, column widths and pivot tables are added by editing the `.xlsx` package with JSZip.
 
@@ -103,8 +104,9 @@ Editing a script in Tampermonkey stops automatic updates for it. To keep your ch
 |---|---|---|
 | [SheetJS](https://sheetjs.com/) (`xlsx`) | 0.18.5 | Build the workbook |
 | [JSZip](https://stuk.github.io/jszip/) | 3.10.1 | Add tables, styles and pivots to the `.xlsx` |
+| [pdf.js](https://mozilla.github.io/pdf.js/) | 3.11.174 | Read certificate PDFs (SABER only) |
 
-Both are loaded from cdnjs by Tampermonkey (`@require`), pinned to exact versions.
+All are loaded from cdnjs by Tampermonkey (`@require`), pinned to exact versions.
 
 ---
 

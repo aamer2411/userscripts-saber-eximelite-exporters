@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SABER Conformity Certificates Detail Exporter
 // @namespace    saber-exporter
-// @version      0.7
+// @version      0.8
 // @description  Export every Conformity Certificate with its full detail-page fields (Certification Body + 15 fields) to Excel. Unlocks locked certificates first via the review page's Skip (default) or a 5-star Send Review.
 // @author       Mohammed Aamer
 // @license      MIT
@@ -13,6 +13,8 @@
 // @match        https://saber.sa/contactofficer/*
 // @require      https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js
 // @require      https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js
+// @require      https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js
+// @require      https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js
 // @grant        none
 // @run-at       document-idle
 // ==/UserScript==
@@ -37,8 +39,9 @@
 //      (UNLOCK_MODE='submit5'). This is the same action a human does by hand.
 //   3. Re-pages the list once so every row now carries a detail URL.
 //   4. Fetches each detail page and parses the 16 columns (Certificate Status comes from
-//      the list). Rows with no detail page (download-only, e.g. PDF certificates) take
-//      number, dates, product, model and status from the list; the rest stay blank.
+//      the list). Rows with no detail page (download-only) take number, dates, product,
+//      model and status from the list; for a certificate PDF (/reports/HRCoCProductCertificate)
+//      the rest is read from the PDF in the browser (pdf.js), otherwise it stays blank.
 //   5. Writes one sheet, 16 columns, one row per certificate.
 //
 // READ/WRITE: step 2 is the ONLY write. Everything else is GET. It never touches any
@@ -67,6 +70,7 @@
     // 'certBody' is the "We ( ... )" office name; the rest are label/value pairs.
     // `list` = the column's index in the list row (Number, Issue, Expiry, Product, Model,
     // Status), used for Certificate Status and for rows that have no detail page.
+    // `pdf` = the label in the certificate PDF, where it differs from the detail page's.
     const COLUMNS = [
         { header: 'Certification Body', kind: 'certBody' },
         { header: 'Certificate Number', label: 'Certificate Number', list: 0 },
@@ -74,10 +78,10 @@
         { header: 'Expire Date', label: 'Expire Date', list: 2, date: true },
         { header: 'Certificate Status', list: 5 },
         { header: 'Certificate Type', label: 'Certificate Type' },
-        { header: 'Commercial Registration No', label: 'Commercial Registration No' },
+        { header: 'Commercial Registration No', label: 'Commercial Registration No', pdf: 'Registration No.' },
         { header: 'Establishment Address', label: 'Establishment Address' },
         { header: 'Model Name', label: 'Model Name', list: 4 },
-        { header: 'Trade Mark', label: 'Trade Mark' },
+        { header: 'Trade Mark', label: 'Trade Mark', pdf: 'Trademark' },
         { header: 'Product Name', label: 'Product Name', list: 3 },
         { header: 'Product Description', label: 'Product Description' },
         { header: 'Country of origin', label: 'Country of origin' },
@@ -97,7 +101,7 @@
 
     // ---------- list paging ----------
 
-    // Returns [{ certNo, detailUrl|null, reviewUrl|null, cells }] for every row across all pages.
+    // Returns [{ certNo, detailUrl|null, reviewUrl|null, pdfUrl|null, cells }] for every row across all pages.
     async function collectListRows(setStatus) {
         const rows = [];
         const seen = new Set();
@@ -116,10 +120,12 @@
                 newOnPage++;
                 const view = tr.querySelector('a[href*="ViewHRCoC"]');
                 const review = tr.querySelector('a[href*="Reviews"]');
+                const pdf = tr.querySelector('a[href*="/reports/HRCoCProductCertificate"]');
                 rows.push({
                     certNo: no,
                     detailUrl: view ? view.href : null,
                     reviewUrl: review ? review.href : null,
+                    pdfUrl: pdf ? pdf.href : null,
                     cells: [...tr.querySelectorAll('td')].map(td => clean(td.textContent)),
                 });
             }
@@ -182,8 +188,10 @@
     }
 
     // "We ( ....OFFICE NAME.... ) office number ..." -> OFFICE NAME (dots are padding).
-    function certificationBody(doc) {
-        const m = doc.body.textContent.match(/We\s*\(([\s\S]*?)\)/);
+    // Ends at ") office", so a name with its own brackets ("TUV Austria (SHANGHAI) Co.")
+    // is kept whole; falls back to the first ")" if that wording is missing.
+    function certificationBody(text) {
+        const m = text.match(/We\s*\(([\s\S]*?)\)\s*office/i) || text.match(/We\s*\(([\s\S]*?)\)/);
         if (!m) return '';
         return m[1].replace(/^[\s.]+|[\s.]+$/g, '').replace(/\s+/g, ' ').trim();
     }
@@ -196,7 +204,7 @@
     }
 
     function parseDetail(doc, row) {
-        return COLUMNS.map(c => c.kind === 'certBody' ? certificationBody(doc)
+        return COLUMNS.map(c => c.kind === 'certBody' ? certificationBody(doc.body.textContent)
             : c.label ? valueForLabel(doc, c.label)
             : listValue(row, c));
     }
@@ -213,6 +221,72 @@
                 const doc = await fetchDoc(url.href);
                 out[i + k] = parseDetail(doc, row);
                 setStatus('Details (' + (++done) + '/' + rows.length + ')');
+            }));
+        }
+        return out;
+    }
+
+    // ---------- certificate PDFs ----------
+    // Download-only certificates have no detail page, only a PDF in SABER's own template:
+    // on page 1 each label is 8pt text and its value 10pt text to its right on the same
+    // row. pdf.worker is @required too, so pdf.js runs in-page without loading a worker.
+
+    const isValue = it => it.h >= 9.5;
+
+    // Page 1's text pieces with their position (presentation-form Arabic normalised).
+    async function pdfItems(buf) {
+        const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+        const { items } = await (await pdf.getPage(1)).getTextContent();
+        return items.filter(it => it.str.trim()).map(it => ({
+            s: clean(it.str.normalize('NFKC')), x: it.transform[4], y: it.transform[5], h: it.height,
+        }));
+    }
+
+    // Value pieces right of the label, within ~one row of it, up to the next label on that row.
+    function pdfValue(items, label) {
+        const want = label.toLowerCase();
+        const lab = items.find(it => !isValue(it) && it.s.toLowerCase() === want);
+        if (!lab) return '';
+        const near = it => Math.abs(it.y - lab.y) <= 9 && it.x > lab.x;
+        const stop = Math.min(...items.filter(it => !isValue(it) && near(it)).map(it => it.x));
+        return items.filter(it => isValue(it) && near(it) && it.x < stop)
+            .sort((a, b) => b.y - a.y || a.x - b.x).map(it => it.s).join(' ');
+    }
+
+    // The "We (... NAME ...) Office Number" line, pieces put back in left-to-right order.
+    function pdfCertBody(items) {
+        const we = items.find(it => it.s === 'We');
+        if (!we) return '';
+        return certificationBody(items.filter(it => Math.abs(it.y - we.y) <= 2)
+            .sort((a, b) => a.x - b.x).map(it => it.s).join(' '));
+    }
+
+    // List values first (number, dates, status, product, model); the rest from the PDF.
+    function parsePdf(items, row) {
+        return COLUMNS.map(c => c.list != null ? listValue(row, c)
+            : c.kind === 'certBody' ? pdfCertBody(items)
+            : pdfValue(items, c.pdf || c.label));
+    }
+
+    // Fetch certificate PDFs in small waves. A PDF that can't be read leaves the row with
+    // its list values only, so one bad file never stops the export.
+    async function fetchPdfDetails(rows, setStatus) {
+        const out = new Array(rows.length);
+        let done = 0;
+        for (let i = 0; i < rows.length; i += DETAIL_CONCURRENCY) {
+            const slice = rows.slice(i, i + DETAIL_CONCURRENCY);
+            await Promise.all(slice.map(async (row, k) => {
+                const res = await fetch(row.pdfUrl, { credentials: 'include' });
+                if (/\/Account\/Login/i.test(res.url)) throw new Error('Logged out. Please log in again and retry.');
+                let items = [];
+                try {
+                    if (!res.ok) throw new Error('HTTP ' + res.status);
+                    items = await pdfItems(await res.arrayBuffer());
+                } catch (e) {
+                    console.warn('[SABER CoC exporter] PDF not read for ' + row.certNo, e);
+                }
+                out[i + k] = parsePdf(items, row);
+                setStatus('PDFs (' + (++done) + '/' + rows.length + ')');
             }));
         }
         return out;
@@ -308,9 +382,12 @@
 
         const ready = rows.filter(r => r.detailUrl);
         const data = await fetchDetails(ready, setStatus);
-        // No view or review button (download-only): list values only, other columns blank.
+        // No view or review button (download-only): certificate PDFs are read, anything
+        // else gets list values only with the other columns blank.
         const listOnly = rows.filter(r => !r.detailUrl && !r.reviewUrl);
-        data.push(...listOnly.map(r => COLUMNS.map(c => listValue(r, c))));
+        const pdfRows = listOnly.filter(r => r.pdfUrl);
+        data.push(...await fetchPdfDetails(pdfRows, setStatus));
+        data.push(...listOnly.filter(r => !r.pdfUrl).map(r => COLUMNS.map(c => listValue(r, c))));
 
         // Sort by Expire Date ascending (dd/mm/yyyy); blanks/bad dates sink to the end.
         const expIdx = COLUMNS.findIndex(c => c.header === 'Expire Date');
@@ -451,7 +528,7 @@
     }
 
     // Console hook for testing without the button.
-    window.saberCoc = { collectListRows, unlock, fetchDetails, parseDetail, runExport, COLUMNS };
+    window.saberCoc = { collectListRows, unlock, fetchDetails, fetchPdfDetails, parseDetail, runExport, COLUMNS };
 
     bootFab();
 })();
