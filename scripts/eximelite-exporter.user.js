@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         EximElite EDA-EX Bulk Exporter
 // @namespace    eximelite-exporter
-// @version      1.0
+// @version      1.1
 // @description  Export every row of the EximElite EDA-EX Power BI report (all detail columns, current slicer filters) to a formatted Excel workbook with shipment, KPI and pivot sheets.
 // @author       Mohammed Aamer
 // @license      MIT
@@ -1240,7 +1240,7 @@
     //  BUTTON (round FAB with download -> spinner -> check states)
     // =====================================================================
     const SVG_DOWNLOAD = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M5 21h14"/></svg>';
-    const SVG_CHECK = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>';
+    const SVG_CHECK = '<svg class="chk" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l5 5L20 6"/></svg>';
 
     function injectStyle() {
         if (document.getElementById('eximelite-style')) return;
@@ -1257,13 +1257,17 @@
             'background:#217346;color:#fff;font:600 13px/44px system-ui,Segoe UI,Arial,sans-serif;' +
             'white-space:nowrap;overflow:hidden;box-sizing:border-box;z-index:2147483646;pointer-events:none;' +
             'transition:width .35s ease,background .3s;}' +
-            '#eximelite-pill span{display:inline-block;padding:0 10px 0 18px;opacity:0;transition:opacity .2s;}' +
+            '#eximelite-pill span{display:inline-block;font:500 12.5px/44px ui-monospace,Consolas,monospace;padding:0 10px 0 18px;opacity:0;transition:opacity .2s;}' +
             '#eximelite-pill.open{box-shadow:0 2px 8px rgba(0,0,0,.35);}' +
             '#eximelite-pill.open span{opacity:1;}' +
             '#eximelite-pill.err{background:#c0392b;}' +
-            '.eximelite-spin{width:20px;height:20px;border:3px solid rgba(255,255,255,.35);' +
-            'border-top-color:#fff;border-radius:50%;animation:eximelite-rot .8s linear infinite;}' +
-            '@keyframes eximelite-rot{to{transform:rotate(360deg);}}';
+            '.eximelite-spin{display:grid;gap:3px;width:20px;}' +
+            '.eximelite-spin i{display:block;height:3px;border-radius:2px;background:#fff;transform-origin:left;animation:eximelite-fill 1.2s ease-in-out infinite;}' +
+            '.eximelite-spin i:nth-child(2){animation-delay:.2s;}.eximelite-spin i:nth-child(3){animation-delay:.4s;}' +
+            '@keyframes eximelite-fill{0%,100%{transform:scaleX(.25);opacity:.5;}50%{transform:scaleX(1);opacity:1;}}' +
+            // done: the check mark draws itself like a pen stroke
+            '#eximelite-fab .chk path{stroke-dasharray:24;stroke-dashoffset:24;animation:eximelite-draw .45s ease-out forwards;}' +
+            '@keyframes eximelite-draw{to{stroke-dashoffset:0;}}';
         (document.head || document.documentElement).appendChild(s);
     }
 
@@ -1289,26 +1293,30 @@
         const hide = () => { pill.classList.remove('open'); pill.style.width = '44px'; setTimeout(() => pill.classList.remove('err'), 350); };
         let timer = null;
         const later = (fn, ms) => { clearTimeout(timer); timer = setTimeout(fn, ms); };
+        // Hover opens the pill with a hint; `active` keeps it off while progress/result shows.
+        let active = false;
+        btn.onmouseenter = () => { if (!active) show('Click to export all to Excel'); };
+        btn.onmouseleave = () => { if (!active) hide(); };
         const api = {
             el: btn,
-            idle() { btn.disabled = false; btn.title = 'Export all to Excel'; btn.innerHTML = SVG_DOWNLOAD; },
+            idle() { active = false; btn.disabled = false; btn.innerHTML = SVG_DOWNLOAD; },
             busy(n) {
                 clearTimeout(timer);
-                btn.disabled = true; btn.removeAttribute('title');
-                if (!btn.querySelector('.eximelite-spin')) btn.innerHTML = '<span class="eximelite-spin"></span>';
+                active = true; btn.disabled = true;
+                if (!btn.querySelector('.eximelite-spin')) btn.innerHTML = '<span class="eximelite-spin"><i></i><i></i><i></i></span>';
                 pill.classList.remove('err');
                 show(n ? ('Loading ' + n + ' rows...') : 'Loading...');
             },
             done(n) {
-                btn.disabled = false; btn.removeAttribute('title'); btn.innerHTML = SVG_CHECK;
+                btn.disabled = false; btn.innerHTML = SVG_CHECK;
                 show('Done: ' + n + ' rows');
                 later(() => { hide(); later(() => api.idle(), 400); }, 2000);
             },
             error(msg) {
-                api.idle();
+                api.idle(); active = true;
                 pill.classList.add('err');
                 show('Export failed');
-                later(() => { if (msg) alert(msg); later(hide, 1500); }, 450); // let the red pill paint before alert blocks
+                later(() => { if (msg) alert(msg); later(() => { hide(); active = false; }, 1500); }, 450); // let the red pill paint before alert blocks
             },
         };
         api.idle();
