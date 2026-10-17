@@ -27,7 +27,7 @@ const RAW = 'https://raw.githubusercontent.com/aamer2411/userscripts-saber-exime
 const header = `// ==UserScript==
 // @name         EximElite + SABER Combined Exporter
 // @namespace    eximelite-exporter
-// @version      1.4
+// @version      1.5
 // @description  One script, two tools by site: EximElite EDA-EX bulk exporter on powerbi/eximelite, and the SABER Conformity Certificates detail exporter on saber.sa.
 // @author       Mohammed Aamer
 // @license      MIT

@@ -26,7 +26,7 @@ Pick **one** of the options below. The combined script contains both tools, so d
 ### SABER Conformity Certificates Exporter
 
 - **Every certificate, full detail:** pages the whole Conformity Certificates list, opens each certificate's detail page and exports 16 fields per certificate, including Certification Body, Certificate Number, Issue and Expire Date, Certificate Status, Product, Trade Mark, Model, HS Code, Technical Regulation and Manufacturer.
-- **Download-only certificates too:** some certificates have no detail page, only a PDF download. The script fetches each PDF and reads its fields in the browser. Download-only certificates that aren't a certificate PDF (e.g. IECEE) are exported with the list's number, dates, product, model and status.
+- **Download-only certificates too:** some certificates have no detail page, only a PDF download. The script fetches each PDF (including IECEE certificates) and reads its fields in the browser. If a download can't be read that way, the certificate is still exported with the list's number, dates, product, model and status.
 - **Handles locked certificates:** SABER hides a certificate's detail page until its review form is dealt with. The script presses the review page's **Skip** for you (default), the same action a person does by hand. An optional mode submits a 5-star review instead.
 - **Clean workbook:** one sheet, a `Sl No` column, rows sorted by Expire Date (soonest first), formatted as an Excel table.
 - **Safe by design:** everything is a read except the review skip. No other action link (Cancel, Delete and so on) is ever touched. If the session expires, the run stops and asks you to log in again.

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         EximElite + SABER Combined Exporter
 // @namespace    eximelite-exporter
-// @version      1.4
+// @version      1.5
 // @description  One script, two tools by site: EximElite EDA-EX bulk exporter on powerbi/eximelite, and the SABER Conformity Certificates detail exporter on saber.sa.
 // @author       Mohammed Aamer
 // @license      MIT
@@ -1469,8 +1469,9 @@
     //   3. Re-pages the list once so every row now carries a detail URL.
     //   4. Fetches each detail page and parses the 16 columns (Certificate Status comes from
     //      the list). Rows with no detail page (download-only) take number, dates, product,
-    //      model and status from the list; for a certificate PDF (/reports/HRCoCProductCertificate)
-    //      the rest is read from the PDF in the browser (pdf.js), otherwise it stays blank.
+    //      model and status from the list; for a certificate PDF (/reports/HRCoCProductCertificate,
+    //      or /reports/QMCertificate for IECEE) the rest is read from the PDF in the browser
+    //      (pdf.js). If the file isn't a PDF in SABER's template, the rest stays blank.
     //   5. Writes one sheet, 16 columns, one row per certificate.
     //
     // READ/WRITE: step 2 is the ONLY write. Everything else is GET. It never touches any
@@ -1549,7 +1550,7 @@
                     newOnPage++;
                     const view = tr.querySelector('a[href*="ViewHRCoC"]');
                     const review = tr.querySelector('a[href*="Reviews"]');
-                    const pdf = tr.querySelector('a[href*="/reports/HRCoCProductCertificate"]');
+                    const pdf = tr.querySelector('a[href*="/reports/HRCoCProductCertificate"], a[href*="/reports/QMCertificate"]');
                     rows.push({
                         certNo: no,
                         detailUrl: view ? view.href : null,
