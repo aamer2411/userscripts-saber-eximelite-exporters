@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         SABER Conformity Certificates Detail Exporter
 // @namespace    saber-exporter
-// @version      0.6
-// @description  Export every Conformity Certificate with its full detail-page fields (Certification Body + 14 fields) to Excel. Unlocks locked certificates first via the review page's Skip (default) or a 5-star Send Review.
+// @version      0.7
+// @description  Export every Conformity Certificate with its full detail-page fields (Certification Body + 15 fields) to Excel. Unlocks locked certificates first via the review page's Skip (default) or a 5-star Send Review.
 // @author       Mohammed Aamer
 // @license      MIT
 // @homepageURL  https://github.com/aamer2411/userscripts-saber-eximelite-exporters
@@ -36,8 +36,10 @@
 //      posts no rating) or /Reviews/SubmitEvaluation with both answers = 5
 //      (UNLOCK_MODE='submit5'). This is the same action a human does by hand.
 //   3. Re-pages the list once so every row now carries a detail URL.
-//   4. Fetches each detail page and parses the 15 columns.
-//   5. Writes one sheet, 15 columns, one row per certificate.
+//   4. Fetches each detail page and parses the 16 columns (Certificate Status comes from
+//      the list). Rows with no detail page (download-only, e.g. PDF certificates) take
+//      number, dates, product, model and status from the list; the rest stay blank.
+//   5. Writes one sheet, 16 columns, one row per certificate.
 //
 // READ/WRITE: step 2 is the ONLY write. Everything else is GET. It never touches any
 // other action link (Cancel, Delete, ...). If a page redirects to /Account/Login the
@@ -63,17 +65,20 @@
 
     // Output columns, in order. Each label is matched against the detail page.
     // 'certBody' is the "We ( ... )" office name; the rest are label/value pairs.
+    // `list` = the column's index in the list row (Number, Issue, Expiry, Product, Model,
+    // Status), used for Certificate Status and for rows that have no detail page.
     const COLUMNS = [
         { header: 'Certification Body', kind: 'certBody' },
-        { header: 'Certificate Number', label: 'Certificate Number' },
-        { header: 'Issue Date', label: 'Issue Date' },
-        { header: 'Expire Date', label: 'Expire Date' },
+        { header: 'Certificate Number', label: 'Certificate Number', list: 0 },
+        { header: 'Issue Date', label: 'Issue Date', list: 1, date: true },
+        { header: 'Expire Date', label: 'Expire Date', list: 2, date: true },
+        { header: 'Certificate Status', list: 5 },
         { header: 'Certificate Type', label: 'Certificate Type' },
         { header: 'Commercial Registration No', label: 'Commercial Registration No' },
         { header: 'Establishment Address', label: 'Establishment Address' },
-        { header: 'Model Name', label: 'Model Name' },
+        { header: 'Model Name', label: 'Model Name', list: 4 },
         { header: 'Trade Mark', label: 'Trade Mark' },
-        { header: 'Product Name', label: 'Product Name' },
+        { header: 'Product Name', label: 'Product Name', list: 3 },
         { header: 'Product Description', label: 'Product Description' },
         { header: 'Country of origin', label: 'Country of origin' },
         { header: 'HS Code', label: 'HS Code' },
@@ -92,7 +97,7 @@
 
     // ---------- list paging ----------
 
-    // Returns [{ certNo, detailUrl|null, reviewUrl|null }] for every row across all pages.
+    // Returns [{ certNo, detailUrl|null, reviewUrl|null, cells }] for every row across all pages.
     async function collectListRows(setStatus) {
         const rows = [];
         const seen = new Set();
@@ -115,6 +120,7 @@
                     certNo: no,
                     detailUrl: view ? view.href : null,
                     reviewUrl: review ? review.href : null,
+                    cells: [...tr.querySelectorAll('td')].map(td => clean(td.textContent)),
                 });
             }
             setStatus('Listing ' + rows.length);
@@ -182,10 +188,17 @@
         return m[1].replace(/^[\s.]+|[\s.]+$/g, '').replace(/\s+/g, ' ').trim();
     }
 
-    function parseDetail(doc) {
-        return COLUMNS.map(c => c.kind === 'certBody'
-            ? certificationBody(doc)
-            : valueForLabel(doc, c.label));
+    // Value of column `c` from the list row; list dates are yyyy-mm-dd, output is dd/mm/yyyy.
+    function listValue(row, c) {
+        const v = row.cells[c.list] || '';
+        const m = c.date && /^(\d{4})-(\d{2})-(\d{2})$/.exec(v);
+        return m ? m[3] + '/' + m[2] + '/' + m[1] : v;
+    }
+
+    function parseDetail(doc, row) {
+        return COLUMNS.map(c => c.kind === 'certBody' ? certificationBody(doc)
+            : c.label ? valueForLabel(doc, c.label)
+            : listValue(row, c));
     }
 
     // Fetch detail pages in small waves.
@@ -198,7 +211,7 @@
                 const url = new URL(DETAIL_PATH, location.origin);
                 url.search = new URL(row.detailUrl).search; // reuse the query token as-is
                 const doc = await fetchDoc(url.href);
-                out[i + k] = parseDetail(doc);
+                out[i + k] = parseDetail(doc, row);
                 setStatus('Details (' + (++done) + '/' + rows.length + ')');
             }));
         }
@@ -295,6 +308,9 @@
 
         const ready = rows.filter(r => r.detailUrl);
         const data = await fetchDetails(ready, setStatus);
+        // No view or review button (download-only): list values only, other columns blank.
+        const listOnly = rows.filter(r => !r.detailUrl && !r.reviewUrl);
+        data.push(...listOnly.map(r => COLUMNS.map(c => listValue(r, c))));
 
         // Sort by Expire Date ascending (dd/mm/yyyy); blanks/bad dates sink to the end.
         const expIdx = COLUMNS.findIndex(c => c.header === 'Expire Date');
@@ -319,8 +335,8 @@
             ref: ws['!ref'], headers, widths, stripes: true,
         }, 'SABER_Conformity_Certificates_' + stamp + '.xlsx');
 
-        const skipped = rows.length - ready.length;
-        return { total: ready.length, skipped };
+        const skipped = rows.length - data.length;
+        return { total: data.length, skipped };
     }
 
     // ---------- button ----------
